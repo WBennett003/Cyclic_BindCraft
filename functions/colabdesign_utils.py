@@ -62,6 +62,10 @@ def binder_hallucination(design_name, starting_pdb, chain, target_hotspot_residu
         # termini distance loss
         add_termini_distance_loss(af_model, advanced_settings["weights_termini_loss"])
 
+    if advanced_settings["cyclic"]:
+        # radius of gyration loss
+        add_cyclic_offset(af_model)
+
     # add the helicity loss
     add_helix_loss(af_model, helicity_value)
 
@@ -446,6 +450,37 @@ def add_termini_distance_loss(self, weight=0.1, threshold_distance=7.0):
     # Append the loss function to the model callbacks
     self._callbacks["model"]["loss"].append(loss_fn)
     self.opt["weights"]["NC"] = weight
+
+def add_cyclic_offset(self, offset_type=2):
+  '''add cyclic offset to connect N and C term'''
+  def cyclic_offset(L):
+    i = np.arange(L)
+    ij = np.stack([i,i+L],-1)
+    offset = i[:,None] - i[None,:]
+    c_offset = np.abs(ij[:,None,:,None] - ij[None,:,None,:]).min((2,3))
+    if offset_type == 1:
+      c_offset = c_offset
+    elif offset_type >= 2:
+      a = c_offset < np.abs(offset)
+      c_offset[a] = -c_offset[a]
+    if offset_type == 3:
+      idx = np.abs(c_offset) > 2
+      c_offset[idx] = (32 * c_offset[idx] )/  abs(c_offset[idx])
+    return c_offset * np.sign(offset)
+  idx = self._inputs["residue_index"]
+  offset = np.array(idx[:,None] - idx[None,:])
+
+  if self.protocol == "binder":
+    c_offset = cyclic_offset(self._binder_len)
+    offset[self._target_len:,self._target_len:] = c_offset
+
+  if self.protocol in ["fixbb","partial","hallucination"]:
+    Ln = 0
+    for L in self._lengths:
+      offset[Ln:Ln+L,Ln:Ln+L] = cyclic_offset(L)
+      Ln += L
+  self._inputs["offset"] = offset
+
 
 # plot design trajectory losses
 def plot_trajectory(af_model, design_name, design_paths):

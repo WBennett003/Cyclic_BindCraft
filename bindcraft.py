@@ -211,6 +211,10 @@ while True:
                                                                 data_dir=advanced_settings["af_params_dir"], use_multimer=multimer_validation)
                     binder_prediction_model.prep_inputs(length=length)
 
+                    if advanced_settings["cyclic"]:
+                        add_cyclic_offset(complex_prediction_model)
+                        add_cyclic_offset(binder_prediction_model)
+                        
                     # iterate over designed sequences        
                     for mpnn_sequence in mpnn_sequences:
                         mpnn_time = time.time()
